@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorrido virtual — Volcán Villarrica · Terra Volcano</title>
+<meta name="description" content="Muestra de recorrido virtual 3D del volcán Villarrica con terreno real e imagen satelital, para terravolcano.com.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,100..900;1,100..900&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+<style>
+/* Mismos tokens que terravolcano-awwwards.html */
+:root {
+  --font-1: "Inter Tight", system-ui, sans-serif;
+  --color-primary: #1D0404;
+  --color-brand: #C80000;
+  --color-lava: #FF4D1A;
+  --color-ember: #FFB15C;
+  --glass: rgba(20, 4, 4, .62);
+  --glass-border: rgba(255, 255, 255, .12);
+  --gutter: 20px;
+  --rounded-normal: 8px;
+  --rounded-large: 14px;
+  --button-rounded-full: 72px;
+  --ease-awww: cubic-bezier(0, 1, .5, 1);
+  --ease-out-expo: cubic-bezier(.16, 1, .3, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--font-1); font-size: 14px; font-weight: 400; line-height: 1.5;
+  background: var(--color-primary); color: #fff; overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--color-ember); outline-offset: 3px; }
+.ico { width: 18px; height: 18px; flex-shrink: 0; }
+.glass { background: var(--glass); border: 1px solid var(--glass-border); backdrop-filter: blur(16px) saturate(1.3); }
+
+.tour { position: fixed; inset: 0; }
+.tour__map { position: absolute; inset: 0; }
+
+/* Barra superior */
+.topbar {
+  position: absolute; top: 16px; left: var(--gutter); right: var(--gutter); z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; pointer-events: none;
+}
+.topbar > * { pointer-events: auto; }
+.brand { display: flex; align-items: center; gap: 14px; padding: 8px 18px 8px 10px; border-radius: var(--button-rounded-full); }
+.brand__logo { padding: 2px 12px 2px 8px; border-right: 1px solid var(--glass-border); font-size: 13px; font-weight: 900; letter-spacing: .04em; line-height: .95; }
+.brand__title { display: grid; line-height: 1.15; }
+.brand__title small { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-ember); font-weight: 600; }
+.brand__title strong { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 20px;
+  border-radius: var(--button-rounded-full); background: var(--color-brand); color: #fff;
+  font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+  transition: background .3s;
+}
+.button:hover { background: #A30000; }
+.button--ghost { background: var(--glass); border: 1px solid var(--glass-border); backdrop-filter: blur(16px); }
+.button--ghost:hover { background: rgba(255,255,255,.16); }
+.topbar__right { display: flex; gap: 8px; }
+
+/* Tarjeta de la parada actual */
+.stop {
+  position: absolute; left: var(--gutter); bottom: 112px; z-index: 5;
+  width: min(420px, calc(100vw - 2 * var(--gutter))); padding: 22px 22px 18px; border-radius: var(--rounded-large);
+}
+.stop__meta { display: flex; justify-content: space-between; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--color-ember); font-weight: 600; }
+.stop__title { margin: 10px 0 8px; font-size: clamp(26px, 3vw, 40px); font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.stop__text { margin: 0; color: rgba(255,255,255,.8); font-size: 15px; }
+.stop__facts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.fact { height: 26px; display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--button-rounded-full); background: rgba(255,255,255,.1); font-size: 12px; font-weight: 500; }
+.stop__nav { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.round {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  border: 1px solid var(--glass-border); background: rgba(255,255,255,.06); transition: background .3s, opacity .3s;
+}
+.round:hover { background: rgba(255,255,255,.18); }
+.round[disabled] { opacity: .35; pointer-events: none; }
+.play { flex: 1; justify-content: flex-start; }
+.play .ico--pause { display: none; }
+.tour.is-playing .play .ico--play { display: none; }
+.tour.is-playing .play .ico--pause { display: block; }
+
+/* Línea de paradas (estilo grid-cards/figure-rollover en miniatura) */
+.timeline {
+  position: absolute; left: var(--gutter); right: var(--gutter); bottom: 44px; z-index: 5;
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+}
+.timeline::-webkit-scrollbar { display: none; }
+.chip {
+  position: relative; flex: 1 0 150px; display: grid; gap: 2px; padding: 10px 14px 12px; overflow: hidden;
+  border-radius: var(--rounded-normal); text-align: left; transition: background .3s, border-color .3s;
+}
+.chip small { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; opacity: .6; }
+.chip span { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  background: var(--color-lava); transform: scaleX(var(--progress, 0)); transform-origin: left;
+}
+.chip.is-active { background: rgba(200, 0, 0, .55); border-color: rgba(255, 120, 90, .5); }
+.chip.is-active small { opacity: .9; }
+
+/* Controles tipo Google Earth (brújula, 2D/3D, zoom) */
+.controls { position: absolute; right: var(--gutter); bottom: 112px; z-index: 5; display: grid; gap: 8px; }
+.controls .round { width: 46px; height: 46px; background: var(--glass); backdrop-filter: blur(16px); font-size: 12px; font-weight: 700; }
+.compass .ico { transition: transform .2s linear; }
+
+/* Barra de estado: cámara, coordenadas, elevación, escala */
+.status {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: 32px;
+  display: flex; align-items: center; justify-content: flex-end; gap: 22px; padding: 0 var(--gutter);
+  background: rgba(10, 2, 2, .78); backdrop-filter: blur(10px);
+  font-size: 12px; font-variant-numeric: tabular-nums; color: rgba(255,255,255,.85);
+}
+.status__attr { margin-right: auto; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status__attr a { text-decoration: underline; }
+.status .maplibregl-ctrl-scale { margin: 0; background: transparent; border-color: rgba(255,255,255,.8); color: #fff; font-size: 11px; }
+
+/* Marcadores de puntos de interés (como las etiquetas de Google Earth) */
+.poi { display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.poi__label {
+  padding: 4px 10px; border-radius: var(--button-rounded-full); background: rgba(20,4,4,.7); backdrop-filter: blur(8px);
+  font-size: 12px; font-weight: 600; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,.5);
+}
+.poi__label small { font-weight: 400; opacity: .75; margin-left: 4px; }
+.poi__pin { width: 12px; height: 12px; border-radius: 50%; background: var(--color-lava); box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 18px var(--color-lava); }
+.poi--summit .poi__pin { animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 0 rgba(255,77,26,.6); } 50% { box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 0 14px rgba(255,77,26,0); } }
+
+/* Pantalla de carga */
+.loader {
+  position: absolute; inset: 0; z-index: 10; display: grid; place-items: center; gap: 16px; text-align: center;
+  background: radial-gradient(120% 80% at 50% 120%, #8A1500 0%, var(--color-primary) 60%);
+  transition: opacity .8s, visibility .8s;
+}
+.loader.is-done { opacity: 0; visibility: hidden; }
+.loader__inner { display: grid; justify-items: center; gap: 14px; }
+.loader__title { margin: 0; font-size: clamp(34px, 6vw, 80px); font-weight: 800; letter-spacing: -.05em; line-height: .95; }
+.loader__bar { width: 180px; height: 2px; background: rgba(255,255,255,.15); overflow: hidden; }
+.loader__bar span { display: block; height: 100%; width: 40%; background: var(--color-lava); animation: loading 1.2s var(--ease-out-expo) infinite; }
+@keyframes loading { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-logo { display: none !important; }
+
+@media (max-width: 760px) {
+  .brand__title strong { font-size: 13px; }
+  .topbar .button--ghost span { display: none; }
+  .stop { bottom: 104px; padding: 16px; }
+  .stop__text { font-size: 13.5px; }
+  .controls { bottom: auto; top: 76px; }
+  .status__coords, .status__attr { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="tour" data-controller="tour">
+  <div class="tour__map" data-tour-target="map" role="region" aria-label="Mapa 3D del volcán Villarrica"></div>
+
+  <header class="topbar">
+    <a class="brand glass" href="terravolcano-awwwards.html">
+      <span class="brand__logo" aria-label="Terra Volcano">TERRA<br>VOLCANO</span>
+      <span class="brand__title"><small>Recorrido virtual</small><strong>Volcán Villarrica · 2.847 m</strong></span>
+    </a>
+    <div class="topbar__right">
+      <a class="button button--ghost" href="terravolcano-awwwards.html#ascenso">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Volver</span>
+      </a>
+      <a class="button" href="https://terravolcano.com/tours/">Reservar ascenso</a>
+    </div>
+  </header>
+
+  <section class="stop glass" aria-live="polite">
+    <div class="stop__meta"><span data-tour-target="index">01 / 06</span><span data-tour-target="kicker"></span></div>
+    <h1 class="stop__title" data-tour-target="title">Volcán Villarrica</h1>
+    <p class="stop__text" data-tour-target="text"></p>
+    <div class="stop__facts" data-tour-target="facts"></div>
+    <div class="stop__nav">
+      <button class="round" type="button" aria-label="Parada anterior" data-tour-target="prev" data-action="tour#prev">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button class="button button--ghost play" type="button" data-action="tour#toggle">
+        <svg class="ico ico--play" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z" fill="currentColor"/></svg>
+        <svg class="ico ico--pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>
+        <span data-tour-target="playLabel">Reproducir recorrido</span>
+      </button>
+      <button class="round" type="button" aria-label="Parada siguiente" data-tour-target="next" data-action="tour#next">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <nav class="timeline" aria-label="Paradas del recorrido" data-tour-target="timeline"></nav>
+
+  <div class="controls">
+    <button class="round compass" type="button" aria-label="Orientar al norte" data-action="tour#north">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true" data-tour-target="compass"><path d="M12 2l4 10h-8z" fill="#FF4D1A"/><path d="M12 22l-4-10h8z" fill="#fff"/></svg>
+    </button>
+    <button class="round" type="button" aria-label="Alternar vista 2D y 3D" data-tour-target="dimension" data-action="tour#toggle3d">2D</button>
+    <button class="round" type="button" aria-label="Acercar" data-action="tour#zoomIn">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <button class="round" type="button" aria-label="Alejar" data-action="tour#zoomOut">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <footer class="status">
+    <span class="status__attr">Imágenes © <a href="https://www.esri.com/" target="_blank" rel="noopener">Esri</a>, Maxar, Earthstar Geographics · Terreno: AWS Terrain Tiles (Mapzen, SRTM)</span>
+    <span data-tour-target="scale"></span>
+    <span>Cámara: <strong data-tour-target="camera">—</strong></span>
+    <span class="status__coords" data-tour-target="coords">—</span>
+    <span>Elevación: <strong data-tour-target="elevation">—</strong></span>
+  </footer>
+
+  <div class="loader" data-tour-target="loader">
+    <div class="loader__inner">
+      <p class="loader__title">Villarrica<br>en 3D</p>
+      <div class="loader__bar"><span></span></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.13.0/gsap.min.js"></script>
+<script type="module">
+import { Application, Controller } from "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/+esm";
+
+const { maplibregl, gsap } = window;
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fmt = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 });
+
+/* --------------------------------------------------------------------------
+   Paradas. La cámara se describe igual que en una URL de Google Earth:
+   @lat,lng,{a}a,{d}d,{y}y,{h}h,{t}t → punto mirado, altitud del punto,
+   distancia de la cámara, rumbo (heading) e inclinación (tilt).
+   -------------------------------------------------------------------------- */
+const SUMMIT = { lat: -39.4206, lng: -71.9392 };
+const STOPS = [
+  {
+    kicker: "Inicio", title: "Pucón y el lago Villarrica",
+    text: "El volcán domina el horizonte de Pucón. Desde aquí parte cada expedición, a unos 30 minutos de la base.",
+    facts: ["Pucón · 230 m", "Lago Villarrica"],
+    cam: { lat: SUMMIT.lat, lng: SUMMIT.lng, alt: 2847, dist: 24000, heading: 330, tilt: 74 },
+  },
+  {
+    kicker: "Vista Google Earth", title: "Ladera norte",
+    text: "La misma toma del enlace de Google Earth: la cara norte, por donde sube la ruta de ascenso entre nieve y roca volcánica.",
+    facts: ["Cámara ≈ 2.770 m", "Rumbo 138°", "Inclinación 80°"],
+    // @-39.40736408,-71.94651589,2090.58887562a,3876.70974446d,35y,138.35469832h,79.91987491t
+    cam: { lat: -39.40736408, lng: -71.94651589, alt: 2090.59, dist: 3876.7, heading: 138.35, tilt: 79.92 },
+  },
+  {
+    kicker: "Ascenso", title: "Paso a paso por la nieve",
+    text: "Desde la base del centro de esquí se sube en zigzag con crampones y piolet, guiados por montañistas certificados.",
+    facts: ["≈ 5 h de subida", "Crampones y piolet"],
+    cam: { lat: -39.408, lng: -71.946, alt: 2200, dist: 2600, heading: 160, tilt: 68 },
+  },
+  {
+    kicker: "Cumbre", title: "El cráter activo",
+    text: "A 2.847 m, el cráter de uno de los volcanes más activos de Sudamérica. Aquí el recorrido gira alrededor de la cumbre.",
+    facts: ["2.847 m", "Vista 360°"],
+    cam: { lat: SUMMIT.lat, lng: SUMMIT.lng, alt: 2847, dist: 1700, heading: 200, tilt: 58 },
+    orbit: true,
+  },
+  {
+    kicker: "Panorama", title: "Quetrupillán y Lanín",
+    text: "Mirando al sureste desde la cumbre aparecen el Quetrupillán y, en la frontera con Argentina, el Lanín.",
+    facts: ["Quetrupillán 2.360 m", "Lanín 3.776 m"],
+    cam: { lat: -39.53, lng: -71.66, alt: 1700, dist: 30000, heading: 122, tilt: 77 },
+  },
+  {
+    kicker: "Regreso", title: "De vuelta en Pucón",
+    text: "El descenso deslizándose por la nieve y el regreso a Pucón cierran un día de unas 8 horas.",
+    facts: ["≈ 8 h en total", "Desde $150.000 CLP"],
+    cam: { lat: -39.2823, lng: -71.9547, alt: 230, dist: 14000, heading: 340, tilt: 68 },
+  },
+];
+
+const POIS = [
+  { name: "Volcán Villarrica", note: "2.847 m", lat: SUMMIT.lat, lng: SUMMIT.lng, summit: true },
+  { name: "Pucón", note: "", lat: -39.2823, lng: -71.9547 },
+  { name: "Volcán Quetrupillán", note: "2.360 m", lat: -39.5, lng: -71.7 },
+  { name: "Volcán Lanín", note: "3.776 m", lat: -39.637, lng: -71.502 },
+];
+
+/* Convierte la cámara "Google Earth" en opciones de cámara de MapLibre. */
+function cameraOptions(map, { lat, lng, alt, dist, heading, tilt }) {
+  const rad = Math.PI / 180;
+  const horizontal = dist * Math.sin(tilt * rad);
+  const back = ((heading + 180) % 360) * rad;
+  const camera = new maplibregl.LngLat(
+    lng + (horizontal * Math.sin(back)) / (111320 * Math.cos(lat * rad)),
+    lat + (horizontal * Math.cos(back)) / 111320,
+  );
+  return map.calculateCameraOptionsFromTo(camera, alt + dist * Math.cos(tilt * rad), new maplibregl.LngLat(lng, lat), alt);
+}
+
+const dms = (value, pos, neg) => {
+  const abs = Math.abs(value);
+  const d = Math.floor(abs), m = Math.floor((abs - d) * 60), s = ((abs - d) * 60 - m) * 60;
+  return `${d}°${String(m).padStart(2, "0")}′${s.toFixed(2).padStart(5, "0")}″${value >= 0 ? pos : neg}`;
+};
+
+class TourController extends Controller {
+  static targets = ["map", "index", "kicker", "title", "text", "facts", "prev", "next", "timeline", "playLabel",
+    "compass", "dimension", "scale", "camera", "coords", "elevation", "loader"];
+
+  connect() {
+    this.current = 0;
+    this.playing = false;
+    this.renderTimeline();
+
+    this.map = new maplibregl.Map({
+      container: this.mapTarget,
+      maxPitch: 85,
+      attributionControl: false,
+      canvasContextAttributes: { antialias: true },
+      style: {
+        version: 8,
+        sources: {
+          satellite: {
+            type: "raster", tileSize: 256, maxzoom: 18,
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+          },
+          terrain: {
+            type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 15,
+            tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+          },
+          hillshade: {
+            type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 15,
+            tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+          },
+        },
+        layers: [
+          { id: "satellite", type: "raster", source: "satellite", paint: { "raster-contrast": 0.08, "raster-saturation": 0.06 } },
+          { id: "hillshade", type: "hillshade", source: "hillshade", paint: { "hillshade-exaggeration": 0.15, "hillshade-shadow-color": "#1D0404" } },
+        ],
+        terrain: { source: "terrain", exaggeration: 1 },
+        sky: {
+          "sky-color": "#6FA8DC", "horizon-color": "#DCE9F5", "fog-color": "#E8EEF5",
+          "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.6, "fog-ground-blend": 0.75, "atmosphere-blend": 0.8,
+        },
+      },
+      center: [SUMMIT.lng, SUMMIT.lat], zoom: 11, pitch: 60, bearing: 160,
+    });
+
+    this.map.on("error", (e) => console.error("[mapa]", e.error?.message || e));
+    this.map.addControl(new maplibregl.ScaleControl({ unit: "metric", maxWidth: 110 }), "bottom-left");
+    const scale = this.mapTarget.querySelector(".maplibregl-ctrl-scale");
+    if (scale) this.scaleTarget.appendChild(scale);
+
+    POIS.forEach((p) => {
+      const el = document.createElement("div");
+      el.className = `poi${p.summit ? " poi--summit" : ""}`;
+      el.innerHTML = `<span class="poi__label">${p.name}${p.note ? `<small>${p.note}</small>` : ""}</span><span class="poi__pin"></span>`;
+      new maplibregl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(this.map);
+    });
+
+    // La cámara se coloca apenas existe el estilo; el loader se va cuando las teselas visibles terminan.
+    const hideLoader = () => this.loaderTarget.classList.add("is-done");
+    this.map.once("style.load", () => {
+      this.go(0, { instant: true });
+      this.map.once("idle", hideLoader);
+      setTimeout(hideLoader, 9000);
+    });
+    this.map.on("move", () => this.updateStatus());
+    // Cualquier gesto del usuario pausa el recorrido automático.
+    ["mousedown", "wheel", "touchstart", "dragstart"].forEach((evt) =>
+      this.map.on(evt, (e) => e.originalEvent && this.pause()));
+
+    this.onKey = (e) => {
+      if (e.target.closest("input, textarea")) return;
+      if (e.key === "ArrowRight") this.next();
+      if (e.key === "ArrowLeft") this.prev();
+      if (e.key === " ") { e.preventDefault(); this.toggle(); }
+    };
+    addEventListener("keydown", this.onKey);
+  }
+
+  disconnect() {
+    removeEventListener("keydown", this.onKey);
+    this.pause();
+    this.map?.remove();
+  }
+
+  renderTimeline() {
+    this.timelineTarget.innerHTML = STOPS.map((s, i) => `
+      <button class="chip glass" type="button" data-action="tour#select" data-tour-index-param="${i}">
+        <small>${String(i + 1).padStart(2, "0")} · ${s.kicker}</small><span>${s.title}</span>
+      </button>`).join("");
+  }
+
+  select({ params: { index } }) {
+    this.pause();
+    this.go(index);
+  }
+  next() { this.pause(); this.go(Math.min(this.current + 1, STOPS.length - 1)); }
+  prev() { this.pause(); this.go(Math.max(this.current - 1, 0)); }
+
+  go(index, { instant = false } = {}) {
+    this.current = index;
+    const stop = STOPS[index];
+    this.renderStop(stop, index);
+    this.map.stop();
+    const options = cameraOptions(this.map, stop.cam);
+    const duration = instant || REDUCED ? 0 : 5200;
+    this.map.flyTo({ ...options, duration, curve: 1.2, essential: true });
+    if (stop.orbit && !REDUCED) this.map.once("moveend", () => this.current === index && this.orbit());
+    return duration;
+  }
+
+  orbit() {
+    // Giro lento alrededor de la cumbre, como el "orbit" de Google Earth.
+    this.map.rotateTo(this.map.getBearing() + 120, { duration: 14000, easing: (t) => t });
+  }
+
+  renderStop(stop, index) {
+    this.indexTarget.textContent = `${String(index + 1).padStart(2, "0")} / ${String(STOPS.length).padStart(2, "0")}`;
+    this.kickerTarget.textContent = stop.kicker;
+    this.titleTarget.textContent = stop.title;
+    this.textTarget.textContent = stop.text;
+    this.factsTarget.innerHTML = stop.facts.map((f) => `<span class="fact">${f}</span>`).join("");
+    this.prevTarget.disabled = index === 0;
+    this.nextTarget.disabled = index === STOPS.length - 1;
+    [...this.timelineTarget.children].forEach((chip, i) => {
+      chip.classList.toggle("is-active", i === index);
+      chip.setAttribute("aria-current", i === index ? "step" : "false");
+      if (i !== index) chip.style.setProperty("--progress", i < index && this.playing ? 1 : 0);
+    });
+    this.timelineTarget.children[index]?.scrollIntoView({ block: "nearest", inline: "center", behavior: REDUCED ? "auto" : "smooth" });
+    if (!REDUCED) {
+      gsap.fromTo([this.titleTarget, this.textTarget, this.factsTarget],
+        { y: 18, opacity: 0 }, { y: 0, opacity: 1, duration: 0.8, ease: "expo.out", stagger: 0.06 });
+    }
+  }
+
+  /* Reproducción automática: vuela a cada parada y la recorre en una barra de progreso. */
+  toggle() { this.playing ? this.pause() : this.play(); }
+  play() {
+    this.playing = true;
+    this.element.classList.add("is-playing");
+    this.playLabelTarget.textContent = "Pausar recorrido";
+    if (this.current === STOPS.length - 1) this.current = -1;
+    this.step(this.current === -1 ? 0 : this.current);
+  }
+  step(index) {
+    if (!this.playing) return;
+    const flight = this.go(index);
+    const hold = STOPS[index].orbit ? 9000 : 4500;
+    const chip = this.timelineTarget.children[index];
+    this.progress = gsap.fromTo(chip, { "--progress": 0 }, {
+      "--progress": 1, duration: (flight + hold) / 1000, ease: "none",
+      onComplete: () => (index < STOPS.length - 1 ? this.step(index + 1) : this.pause()),
+    });
+  }
+  pause() {
+    if (!this.playing) return;
+    this.playing = false;
+    this.progress?.kill();
+    this.element.classList.remove("is-playing");
+    this.playLabelTarget.textContent = "Reproducir recorrido";
+  }
+
+  /* Controles estilo Google Earth */
+  north() { this.pause(); this.map.easeTo({ bearing: 0, duration: REDUCED ? 0 : 900 }); }
+  zoomIn() { this.pause(); this.map.zoomIn(); }
+  zoomOut() { this.pause(); this.map.zoomOut(); }
+  toggle3d() {
+    this.pause();
+    const flat = this.map.getPitch() > 5;
+    this.map.easeTo({ pitch: flat ? 0 : 70, duration: REDUCED ? 0 : 1000 });
+    this.dimensionTarget.textContent = flat ? "3D" : "2D";
+  }
+
+  updateStatus() {
+    const center = this.map.getCenter();
+    const elevation = this.map.queryTerrainElevation(center);
+    // getCameraAltitude() es relativa al punto mirado: se suma su elevación para dar msnm, como Google Earth.
+    const relative = this.map.transform.getCameraAltitude?.();
+    const cameraAltitude = relative == null ? null : relative + (this.map.transform.elevation ?? elevation ?? 0);
+    this.coordsTarget.textContent = `${dms(center.lat, "N", "S")} ${dms(center.lng, "E", "O")}`;
+    this.elevationTarget.textContent = elevation == null ? "—" : `${fmt.format(elevation)} m`;
+    this.cameraTarget.textContent = cameraAltitude == null ? "—" : `${fmt.format(cameraAltitude)} m`;
+    this.compassTarget.style.transform = `rotate(${-this.map.getBearing()}deg)`;
+  }
+}
+
+const app = Application.start();
+app.register("tour", TourController);
+</script>
+</body>
+</html>

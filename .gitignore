@@ -1,0 +1,3 @@
+# Claves de API locales (p. ej. Google Map Tiles API). Nunca subirlas.
+config.local.js
+.env
